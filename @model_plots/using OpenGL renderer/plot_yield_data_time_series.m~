@@ -1,0 +1,90 @@
+function plot_yield_data_time_series(pobj,linemode)
+%  Purpose:
+%
+%    Plot the yield time series for given maturity values.
+%
+%  Input:
+%
+%    The line style for the plotted curves.
+%
+%  Output:
+%
+%    The yield data time series plot.
+%
+%  Author : Georgios Magkotsios
+%  Version: January 2012
+%
+
+    % read the yield data and create the x-axis data (in date format) to
+    % correspond to the number of months between the start and end dates in
+    % the input data file
+    if pobj.use_fed_data
+        read_fed_data(pobj,false);
+    else
+        read_fama_bliss(pobj);
+    end
+    start_date = pobj.issue_dates_vec(1);
+    end_date   = pobj.issue_dates_vec(end);
+    dates_axis = linspace(start_date,end_date,pobj.issue_dates)';
+
+    % find the dates that are the closest to the given issuance dates
+    [~, issue_idx_lo] = min(abs(dates_axis - min(pobj.issuance_dates_range)));
+    [~, issue_idx_hi] = min(abs(dates_axis - max(pobj.issuance_dates_range)));
+
+    % identify what maturities to plot
+    [~, idx] = ismember(pobj.selected_maturities,pobj.maturity);
+
+    % define the line specifications and allocate the legend array cell
+    if strcmpi(linemode,'solid')
+        line_style = {' -k' ' -r' ' -g' ' -b' ' -c' ' -m'};
+    elseif strcmpi(linemode,'dash')
+        line_style = {'--k' '--r' '--g' '--b' '--c' '--m'};
+    elseif strcmpi(linemode,'dash-dot')
+        line_style = {'-.k' '-.r' '-.g' '-.b' '-.c' '-.m'};
+    end
+	legend_arr = cell(size(pobj.selected_maturities));
+
+    % make the plot
+    if ~ishold
+        width   = 20;
+        fig_ptr = figure('Name','Yield data time series','Visible',pobj.visible, ...
+            'Units','centimeters','Position',[5,1,width,width*0.8], ...
+            'PaperUnits','centimeters','PaperPosition',[1,1,width,width*0.8]);
+        set(gcf,'renderer','zbuffer');
+        hold on;
+    end
+
+    % add the curves
+    for i=1:length(pobj.selected_maturities)
+        plot(dates_axis(issue_idx_lo:issue_idx_hi), ...
+             pobj.meas_data(issue_idx_lo:issue_idx_hi,idx(i)), ...
+             line_style{i},'LineWidth',3);
+        if pobj.selected_maturities(i) >= 1
+            legend_arr{i} = [num2str(pobj.selected_maturities(i)) '-year'];
+        else
+            legend_arr{i} = [num2str(pobj.selected_maturities(i)*12) '-month'];
+        end
+    end
+
+    % place the legend
+    legend(legend_arr,'Location',pobj.legend_location);
+
+    % configure the plot (test both datetick commands for optimal results)
+    set(gca,'FontSize',12,'LineWidth',2,'Box','on');
+    %datetick('x','keepticks','keeplimits');
+    datetick('x');
+    xlabel('Time (years)','FontSize',18);
+    ylabel('Yield','FontSize',18,'FontWeight','bold');
+    title('Yield data time series','FontSize',20);
+
+    % shade the recession periods if applicable
+    shade_recession_periods(pobj);
+
+    % release the device window and export to eps
+    hold off;
+    if pobj.export_to_eps
+        %print(fig_ptr,'yield_data_time_series.eps','-depsc2');
+        print(gcf,'yield_data_time_series.eps','-depsc2');
+    end
+
+end

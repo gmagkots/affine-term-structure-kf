@@ -1,0 +1,135 @@
+function plot_risk_free_rate(pobj)
+%  Purpose:
+%
+%    Plot the instantaneous (spot) risk-free rate for the arbitrage-free
+%    models.
+%
+%  Input:
+%
+%    None.
+%
+%  Output:
+%
+%    The plot of the risk-free interest rate.
+%
+%  Author : Georgios Magkotsios
+%  Version: February 2012
+%
+
+    % allocate a few cell arrays and the flag to locate arbitrage-free
+    % models
+    spot_rate          = cell(1,pobj.models_number);
+    spot_rate_variance = cell(1,pobj.models_number);
+    model_found        = false;
+
+    % choose the output directory to read the files from
+    if pobj.use_fed_data
+        dirname1 = 'output_fed_in_sample';
+        dirname2 = 'output_fed_out_of_sample';
+    else
+        dirname1 = 'output_fama_bliss_in_sample';
+        dirname2 = 'output_fama_bliss_out_of_sample';
+    end
+    if ~exist(dirname1,'dir')
+        error(['Directory "' dirname1 '" not found.\n']);
+    end
+    if pobj.include_forecasts && ~exist(dirname2,'dir')
+        error(['Directory "' dirname2 '" not found.\n']);
+    end
+
+    % read the risk-free rate data (where available)
+    Nplots = 0;
+    for model_iter=1:pobj.models_number
+        if strcmpi(pobj.file_prefix{model_iter}(1:2),'AF')
+            model_found = true;
+            Nplots = Nplots + 1;
+            filename = [pobj.file_prefix{model_iter} '_spot_rate.mat'];
+            if pobj.include_forecasts
+                mat_path1 = [dirname1 '/' filename];
+                mat_path2 = [dirname2 '/' filename];
+                load_struct1 = load(mat_path1);
+                load_struct2 = load(mat_path2);
+                spot_rate{model_iter} = [load_struct1.spot_rate; ...
+                                         load_struct2.spot_rate];
+                spot_rate_variance{model_iter} = ...
+                    [load_struct1.spot_rate_variance; ...
+                     load_struct2.spot_rate_variance];
+                pobj.forecast_dates = load_struct2.forecast_dates;
+            else
+                mat_path = [dirname1 '/' filename];
+                load_struct = load(mat_path);
+                spot_rate{model_iter} = load_struct.spot_rate;
+                spot_rate_variance{model_iter} = ...
+                    load_struct.spot_rate_variance;
+            end
+        end
+    end
+
+    % check if an arbitrage-free model was found
+    if ~model_found
+        error('No arbitrage-free model was loaded');
+    end
+
+    % create the dates axis
+    create_dates_axis(pobj);
+
+    % define the line specifications and allocate the legend array cell
+    line_style = {' -k' ' -r' ' -g' ' -b' ' -c' ' -m' ...
+                  '--k' '--r' '--g' '--b' '--c' '--m' ...
+                  '-.k' '-.r' '-.g' '-.b' '-.c' '-.m'};
+	legend_arr = cell(1,Nplots);
+
+    % make the plot
+    width   = 20;
+    fig_ptr = figure('Name','Model factors','Visible',pobj.visible, ...
+        'Units','centimeters','Position',[5,1,width,width*0.8], ...
+        'PaperUnits','centimeters','PaperPosition',[1,1,width,width*0.8]);
+    set(gcf,'renderer','zbuffer');
+
+    % hold the current graphics window open
+    hold on;
+
+    % plot the spot-rate curves
+    for i=1:Nplots
+        plot(pobj.dates_axis,...
+             spot_rate{i}(pobj.idx_lo:pobj.idx_hi), ...
+             line_style{i},'LineWidth',3);
+        legend_arr{i} = [pobj.model_cell{i}.model_name ' spot-rate'];
+    end
+
+    % place the legend
+    legend(legend_arr,'Location',pobj.legend_location);
+
+    % plot the spot-rate variance curves
+    if pobj.include_variances
+        for i=1:Nplots
+            curve_up = spot_rate{i}(pobj.idx_lo:pobj.idx_hi) + ...
+                       spot_rate_variance{i}(pobj.idx_lo:pobj.idx_hi);
+            curve_dn = spot_rate{i}(pobj.idx_lo:pobj.idx_hi) - ...
+                       spot_rate_variance{i}(pobj.idx_lo:pobj.idx_hi);
+            plot(pobj.dates_axis,curve_up,line_style{i+6} ,'LineWidth',3);
+            plot(pobj.dates_axis,curve_dn,line_style{i+12},'LineWidth',3);
+        end
+    end
+
+    % release the current graphics window
+    hold off;
+
+    % configure the plot
+    set(gca,'FontSize',12,'LineWidth',2,'Box','on');
+    %datetick('x','keepticks','keeplimits');
+    datetick('x');
+    xlabel('Time (years)','FontSize',18);
+    ylabel('Risk-free rate r','FontSize',18,'FontWeight','bold');
+    title('Risk-free interest rate time series','FontSize',20);
+
+    % shade the forecasting dates and recession periods if applicable
+    shade_forecasting_dates(pobj);
+    shade_recession_periods(pobj);
+
+    % export to eps
+    if pobj.export_to_eps
+        print(fig_ptr,'spot_rates.eps','-depsc2');
+    end
+
+end
